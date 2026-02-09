@@ -1677,7 +1677,7 @@ class CustomDataset(BenchmarkDataset):
                 prompt = None
                 prompt_token_ids = item["prompt_token_ids"]
                 additional_information = item["additional_information"]
-                prompt_len = len(tokenizer(prompt_token_ids))
+                prompt_len = len(prompt_token_ids)
 
             sampled_requests.append(
                 SampleRequest(
