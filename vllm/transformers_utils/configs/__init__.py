@@ -61,5 +61,5 @@ __all__ = [
     "Step3VisionEncoderConfig",
     "Step3TextConfig",
     "Qwen3NextConfig",
-    "HSTUInferenceRankingConfig",
+    "HSTUInferenceRankingConfig"
 ]

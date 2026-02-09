@@ -117,9 +117,7 @@ class OpenAIServingCompletion(OpenAIServing):
             return self.create_error_response(
                 "prompt_logprobs is not compatible with prompt embeds.")
 
-        request_id = (
-            f"cmpl-"
-            f"{self._base_request_id(raw_request, request.request_id)}")
+        request_id = request.request_id
         created_time = int(time.time())
 
         request_metadata = RequestResponseMetadata(request_id=request_id)
@@ -138,6 +136,7 @@ class OpenAIServingCompletion(OpenAIServing):
             engine_prompts = await renderer.render_prompt_and_embeds(
                 prompt_or_prompts=request.prompt,
                 prompt_embeds=request.prompt_embeds,
+                additional_information=request.additional_information,
                 config=self._build_render_config(request),
             )
         except ValueError as e:
@@ -233,6 +232,9 @@ class OpenAIServingCompletion(OpenAIServing):
         except ValueError as e:
             # TODO: Use a vllm-specific Validation Error
             return self.create_error_response(str(e))
+        except Exception as e:
+            logger.error(f"Error creating generator for prompt {i}:{e}",exc_info=True)
+            raise
 
         result_generator = merge_async_iterators(*generators)
 
@@ -291,10 +293,19 @@ class OpenAIServingCompletion(OpenAIServing):
                 request_metadata,
             )
         except asyncio.CancelledError:
+            logger.error("Client disconnected", exc_info=True)
             return self.create_error_response("Client disconnected")
         except ValueError as e:
             # TODO: Use a vllm-specific Validation Error
+            logger.error(f"ValueError:{e}", exc_info=True)
             return self.create_error_response(str(e))
+        except Exception as e:
+            logger.error(f"Unexpected error type: {type(e).__name__}", exc_info=True)
+            logger.error(f"Error details:")
+            logger.error(f"- Request ID: {request_id}")
+            logger.error(f"- Model name: {model_name}")
+            logger.error(f"- final_res_batch length: {len(final_res_batch)}")
+            return self.create_error_response(f"Internal server error: {str(e)}")
 
         # When user requests streaming but we don't stream, we still need to
         # return a streaming response with a single event.

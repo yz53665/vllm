@@ -49,8 +49,8 @@ class InputPreprocessor:
 
     def get_bos_token_id(self) -> Optional[int]:
         if self.tokenizer is None:
-            logger.warning("Using None for BOS token id because tokenizer "
-                           "is not initialized")
+            # logger.warning("Using None for BOS token id because tokenizer "
+            #                "is not initialized")
             return None
 
         return self.tokenizer.bos_token_id

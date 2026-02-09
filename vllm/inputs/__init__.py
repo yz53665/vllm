@@ -4,10 +4,9 @@
 from .data import (DataPrompt, DecoderOnlyInputs, EmbedsInputs, EmbedsPrompt,
                    EncoderDecoderInputs, ExplicitEncoderDecoderPrompt,
                    ProcessorInputs, PromptType, SingletonInputs,
-                   SingletonPrompt, TextPrompt, TokenInputs, TokensPrompt,
+                   SingletonPrompt, TextPrompt, TokenInputs, TokensPrompt, GRTokensPrompt,
                    build_explicit_enc_dec_prompt, embeds_inputs,
-                   to_enc_dec_tuple_list, token_inputs, zip_enc_dec_prompts,
-                   GRTokensPrompt)
+                   to_enc_dec_tuple_list, token_inputs, zip_enc_dec_prompts)
 
 __all__ = [
     "DataPrompt",

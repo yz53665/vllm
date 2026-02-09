@@ -649,6 +649,11 @@ class ChatCompletionRequest(OpenAIBaseModel):
                      "numeric values, used by custom extensions."),
     )
 
+    additional_information: Optional[dict[str,Any]] = Field(
+        default=None,
+        description=("Additional information for GR.")
+    )
+
     # --8<-- [end:chat-completion-extra-params]
 
     # Default sampling parameters for chat completion requests

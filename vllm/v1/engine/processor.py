@@ -446,7 +446,7 @@ class Processor:
             request_id=request_id,
             prompt_token_ids=prompt_token_ids,
             prompt_embeds=prompt_embeds,
-            additional_information=prompt['additional_information'],
+            additional_information=prompt["additional_information"],
             mm_features=mm_features,
             sampling_params=sampling_params,
             pooling_params=pooling_params,

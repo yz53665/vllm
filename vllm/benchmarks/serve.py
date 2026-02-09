@@ -50,7 +50,8 @@ MILLISECONDS_TO_SECONDS_CONVERSION = 1000
 
 TERM_PLOTLIB_AVAILABLE = ((importlib.util.find_spec("termplotlib") is not None)
                           and (shutil.which("gnuplot") is not None))
-
+from vllm.logger import init_logger
+logger = init_logger(__name__)
 
 # TODO: Remove this in v0.11.0
 class DeprecatedEndpointTypeAction(argparse.Action):
@@ -506,12 +507,15 @@ async def benchmark(
     )
 
     print("Starting initial single prompt test run...")
-    test_prompt, test_prompt_len, test_output_len, test_mm_content = (
+    test_prompt, test_prompt_token_ids, test_prompt_len, test_output_len, test_mm_content, test_additional_info = (
         input_requests[0].prompt,
+        input_requests[0].prompt_token_ids,
         input_requests[0].prompt_len,
         input_requests[0].expected_output_len,
         input_requests[0].multi_modal_data,
+        input_requests[0].additional_information,
     )
+    test_output_len = 1
 
     assert (test_mm_content is None or isinstance(test_mm_content, dict)
             or (isinstance(test_mm_content, list)
@@ -521,6 +525,7 @@ async def benchmark(
         model=model_id,
         model_name=model_name,
         prompt=test_prompt,
+        prompt_token_ids=test_prompt_token_ids,
         api_url=api_url,
         prompt_len=test_prompt_len,
         output_len=test_output_len,
@@ -529,8 +534,9 @@ async def benchmark(
         ignore_eos=ignore_eos,
         extra_headers=extra_headers,
         extra_body=extra_body,
+        additional_information=test_additional_info,
     )
-
+    print("Starting test run...")
     if ready_check_timeout_sec > 0:
         test_output = await wait_for_endpoint(
             request_func,
@@ -539,6 +545,7 @@ async def benchmark(
             timeout_seconds=ready_check_timeout_sec,
         )
         if not test_output.success:
+            logger.error(f"Initial test run failed - Error: {test_output.error}", exc_info=True)
             raise ValueError(
                 "Initial test run failed - Please make sure benchmark "
                 "arguments are correctly specified. "
@@ -565,7 +572,8 @@ async def benchmark(
                                          multi_modal_content=test_mm_content,
                                          ignore_eos=ignore_eos,
                                          extra_headers=extra_headers,
-                                         extra_body=extra_body)
+                                         extra_body=extra_body,
+                                         additional_information=test_additional_info)
         profile_output = await request_func(request_func_input=profile_input,
                                             session=session)
         if profile_output.success:
@@ -628,13 +636,16 @@ async def benchmark(
                         "timestamp": timestamp
                     })
                 last_int_rps = current_int_rps
-        prompt, prompt_len, output_len, mm_content, request_id = (
+        prompt, prompt_token_ids, prompt_len, output_len, mm_content, request_id, additional_information = (
             request.prompt,
+            request.prompt_token_ids,
             request.prompt_len,
             request.expected_output_len,
             request.multi_modal_data,
             request.request_id,
+            request.additional_information,
         )
+        output_len = 1
         req_model_id, req_model_name = model_id, model_name
         if lora_modules:
             req_lora_module = next(lora_modules)
@@ -644,6 +655,7 @@ async def benchmark(
             model=req_model_id,
             model_name=req_model_name,
             prompt=prompt,
+            prompt_token_ids=prompt_token_ids,
             api_url=api_url,
             prompt_len=prompt_len,
             output_len=output_len,
@@ -653,6 +665,7 @@ async def benchmark(
             extra_headers=extra_headers,
             extra_body=extra_body,
             request_id=request_id,
+            additional_information=additional_information,
         )
         tasks.append(
             asyncio.create_task(
@@ -1113,6 +1126,8 @@ def add_cli_args(parser: argparse.ArgumentParser):
         '"mistral" will always use the `mistral_common` tokenizer. \n*'
         '"custom" will use --tokenizer to select the preregistered tokenizer.')
 
+    parser.add_argument('--skip-tokenizer-init', default=False)
+
     parser.add_argument("--served-model-name",
                         type=str,
                         default=None,
@@ -1165,7 +1180,7 @@ def main(args: argparse.Namespace) -> dict[str, Any]:
 
 
 async def main_async(args: argparse.Namespace) -> dict[str, Any]:
-    print(args)
+    print("args:", args)
     random.seed(args.seed)
     np.random.seed(args.seed)
 
@@ -1213,8 +1228,10 @@ async def main_async(args: argparse.Namespace) -> dict[str, Any]:
             else:
                 raise ValueError(
                     "Invalid header format. Please use KEY=VALUE format.")
-
-    tokenizer = get_tokenizer(tokenizer_id,
+    if args.skip_tokenizer_init:
+        tokenizer = None
+    else:
+        tokenizer = get_tokenizer(tokenizer_id,
                               tokenizer_mode=tokenizer_mode,
                               trust_remote_code=args.trust_remote_code)
 

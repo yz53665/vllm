@@ -5,7 +5,7 @@ import asyncio
 import io
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Annotated, Optional, Union
+from typing import Any, Annotated, Optional, Union
 
 import pybase64
 import torch
@@ -14,6 +14,7 @@ from pydantic import Field
 from vllm.config import ModelConfig
 from vllm.inputs.data import EmbedsPrompt as EngineEmbedsPrompt
 from vllm.inputs.data import TokensPrompt as EngineTokensPrompt
+from vllm.inputs.data import GRTokensPrompt as EngineGRTokensPrompt
 from vllm.inputs.parse import parse_and_batch_prompt
 from vllm.transformers_utils.tokenizer import AnyTokenizer
 from vllm.utils import AsyncMicrobatchTokenizer
@@ -74,6 +75,7 @@ class BaseRenderer(ABC):
         self,
         *,
         prompt_or_prompts: Union[str, list[str], list[int], list[list[int]]],
+        additional_information: dict[str,Any] = None,
         config: "RenderConfig",
     ) -> list[EngineTokensPrompt]:
         """
@@ -107,6 +109,7 @@ class BaseRenderer(ABC):
         prompt_or_prompts: Optional[Union[str, list[str], list[int],
                                           list[list[int]]]] = None,
         prompt_embeds: Optional[Union[bytes, list[bytes]]] = None,
+        additional_information: dict[str,Any] = None,
         config: "RenderConfig",
     ) -> list[Union[EngineTokensPrompt, EngineEmbedsPrompt]]:
         """
@@ -189,6 +192,7 @@ class CompletionRenderer(BaseRenderer):
         self,
         *,
         prompt_or_prompts: Union[str, list[str], list[int], list[list[int]]],
+        additional_information: dict[str,Any] = None,
         config: "RenderConfig",
     ) -> list[EngineTokensPrompt]:
         """Implementation of prompt rendering for completion-style requests.
@@ -214,7 +218,8 @@ class CompletionRenderer(BaseRenderer):
                                               config.max_length,
                                               truncate_prompt_tokens,
                                               config.cache_salt,
-                                              config.needs_detokenization)
+                                              config.needs_detokenization,
+                                              additional_information)
             else:
                 # Text input
                 task = self._tokenize(prompt_input["content"],
@@ -237,6 +242,7 @@ class CompletionRenderer(BaseRenderer):
         prompt_or_prompts: Optional[Union[str, list[str], list[int],
                                           list[list[int]]]] = None,
         prompt_embeds: Optional[Union[bytes, list[bytes]]] = None,
+        additional_information: dict[str,Any] = None,
         config: "RenderConfig",
     ) -> list[Union[EngineTokensPrompt, EngineEmbedsPrompt]]:
         """
@@ -259,6 +265,7 @@ class CompletionRenderer(BaseRenderer):
 
         token_prompts = await self.render_prompt(
             prompt_or_prompts=prompt_or_prompts,
+            additional_information=additional_information,
             config=config,
         )
         rendered.extend(token_prompts)
@@ -337,6 +344,7 @@ class CompletionRenderer(BaseRenderer):
         truncate_prompt_tokens: Optional[int],
         cache_salt: Optional[str],
         needs_detokenization: Optional[bool] = False,
+        additional_information: dict[str, Union[str, int, list]] = None,
     ) -> EngineTokensPrompt:
         """Optionally detokenize token IDs and build a tokens prompt."""
         token_ids = self._maybe_apply_truncation(token_ids,
@@ -350,7 +358,8 @@ class CompletionRenderer(BaseRenderer):
         return self._create_tokens_prompt(token_ids=token_ids,
                                           max_length=max_length,
                                           cache_salt=cache_salt,
-                                          prompt=prompt)
+                                          prompt=prompt,
+                                          additional_information=additional_information)
 
     def _get_async_tokenizer(self) -> AsyncMicrobatchTokenizer:
         """Get or create async tokenizer using shared pool."""
@@ -379,6 +388,7 @@ class CompletionRenderer(BaseRenderer):
         max_length: Optional[int] = None,
         cache_salt: Optional[str] = None,
         prompt: Optional[str] = None,
+        additional_information: dict[str,Any] = None,
     ) -> EngineTokensPrompt:
         """Create validated EngineTokensPrompt."""
         if max_length is not None and len(token_ids) > max_length:
@@ -387,7 +397,11 @@ class CompletionRenderer(BaseRenderer):
                 f"However, your request has {len(token_ids)} input tokens. "
                 "Please reduce the length of the input messages.")
 
-        tokens_prompt = EngineTokensPrompt(prompt_token_ids=token_ids)
+        if additional_information is None:
+            tokens_prompt = EngineTokensPrompt(prompt_token_ids=token_ids)
+        else:
+            tokens_prompt = EngineGRTokensPrompt(prompt_token_ids=token_ids,
+                                                 additional_information=additional_information)
         if cache_salt is not None:
             tokens_prompt["cache_salt"] = cache_salt
         if prompt is not None:

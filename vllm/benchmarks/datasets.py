@@ -26,7 +26,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from functools import cache
 from io import BytesIO
-from typing import Any, Callable, Optional, Union, cast
+from typing import Any, Callable, Optional, Union, cast, Dict
 
 import numpy as np
 from PIL import Image
@@ -77,11 +77,14 @@ class SampleRequest:
     prompt: Union[str, list[str]]
     prompt_len: int
     expected_output_len: int
+    prompt_token_ids: list[int] = None
     multi_modal_data: Optional[
         Union[MultiModalDataDict, dict, list[dict]]
     ] = None
+    prompt_token_ids: list[int] | None = None
     lora_request: Optional[LoRARequest] = None
     request_id: Optional[str] = None
+    additional_information: Dict[str,Any] = None
 
 
 # -----------------------------------------------------------------------------
@@ -1613,7 +1616,7 @@ class CustomDataset(BenchmarkDataset):
                                       lines=True)
 
             # check if the JSONL file has a 'prompt' column
-            if "prompt" not in jsonl_data.columns:
+            if "prompt" not in jsonl_data.columns and "prompt_token_ids" not in jsonl_data.columns:
                 raise ValueError("JSONL file must contain a 'prompt' column.")
 
             # Convert each row to a dictionary and append to self.data
@@ -1654,23 +1657,33 @@ class CustomDataset(BenchmarkDataset):
         for i, item in enumerate(self.data):
             if len(sampled_requests) >= num_requests:
                 break
-            prompt = item["prompt"]
+            if tokenizer is not None:
+                prompt = item["prompt"]
+                prompt_token_ids = None
 
-            # apply template
-            if not skip_chat_template:
-                prompt = tokenizer.apply_chat_template(
-                    [{
-                        "role": "user",
-                        "content": prompt
-                    }],
-                    add_generation_prompt=True,
-                    tokenize=False,
-                )
+                # apply template
+                if not skip_chat_template:
+                    prompt = tokenizer.apply_chat_template(
+                        [{
+                            "role": "user",
+                            "content": prompt
+                        }],
+                        add_generation_prompt=True,
+                        tokenize=False,
+                    )
 
-            prompt_len = len(tokenizer(prompt).input_ids)
+                prompt_len = len(tokenizer(prompt).input_ids)
+            else:
+                prompt = None
+                prompt_token_ids = item["prompt_token_ids"]
+                additional_information = item["additional_information"]
+                prompt_len = len(tokenizer(prompt_token_ids))
+
             sampled_requests.append(
                 SampleRequest(
                     prompt=prompt,
+                    prompt_token_ids=prompt_token_ids,
+                    additional_information=additional_information,
                     prompt_len=prompt_len,
                     expected_output_len=output_len,
                     request_id=request_id_prefix + str(i),

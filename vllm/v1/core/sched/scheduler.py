@@ -695,8 +695,8 @@ class Scheduler(SchedulerInterface):
                 req_to_new_blocks[req_id].get_block_ids(allow_none=True))
             num_computed_tokens.append(req.num_computed_tokens)
 
-            additional_infor = req.additional_information
-            additional_information.append(additional_infor)
+            additional_info = req.additional_information
+            additional_information.append(additional_info)
         # Because resumed_reqs is usually empty, it is more efficient to do
         # in-place appending so that we don't need to allocate a new list.
         resumed_from_preemption = [False] * len(running_reqs)
@@ -708,7 +708,7 @@ class Scheduler(SchedulerInterface):
             new_token_ids=new_token_ids,
             new_block_ids=new_block_ids,
             num_computed_tokens=num_computed_tokens,
-            additional_information=additional_information
+            additional_information=additional_information,
         )
 
     def _try_schedule_encoder_inputs(

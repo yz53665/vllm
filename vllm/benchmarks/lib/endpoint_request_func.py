@@ -10,7 +10,9 @@ import time
 import traceback
 from collections.abc import Awaitable
 from dataclasses import dataclass, field
-from typing import Optional, Protocol, Union
+from typing import Optional, Protocol, Union, Dict, Any
+from vllm.logger import init_logger
+logger = init_logger(__name__)
 
 import aiohttp
 from tqdm.asyncio import tqdm
@@ -67,6 +69,7 @@ class RequestFuncInput:
     prompt_len: int
     output_len: int
     model: str
+    prompt_token_ids: list[int] = None
     model_name: Optional[str] = None
     logprobs: Optional[int] = None
     extra_headers: Optional[dict] = None
@@ -75,6 +78,7 @@ class RequestFuncInput:
     ignore_eos: bool = False
     language: Optional[str] = None
     request_id: Optional[str] = None
+    additional_information: Dict[str, Any] = None
 
 
 @dataclass
@@ -122,19 +126,36 @@ async def async_request_openai_completions(
         ("completions", "profile")
     ), "OpenAI Completions API URL must end with 'completions' or 'profile'."
 
-    payload = {
-        "model": request_func_input.model_name
-        if request_func_input.model_name else request_func_input.model,
-        "prompt": request_func_input.prompt,
-        "temperature": 0.0,
-        "repetition_penalty": 1.0,
-        "max_tokens": request_func_input.output_len,
-        "logprobs": request_func_input.logprobs,
-        "stream": True,
-        "stream_options": {
-            "include_usage": True,
-        },
-    }
+    if request_func_input.prompt_token_ids is not None:
+        payload = {
+            "model": request_func_input.model_name
+            if request_func_input.model_name else request_func_input.model,
+            "prompt": request_func_input.prompt_token_ids,
+            "prompt_token_ids": request_func_input.prompt_token_ids,
+            "additional_information": request_func_input.additional_information,
+            "temperature": 0.0,
+            "repetition_penalty": 1.0,
+            "max_tokens": request_func_input.output_len,
+            "logprobs": request_func_input.logprobs,
+            "stream": True,
+            "stream_options": {
+                "include_usage": True,
+            },
+        }
+    else:
+        payload = {
+            "model": request_func_input.model_name
+            if request_func_input.model_name else request_func_input.model,
+            "prompt": request_func_input.prompt,
+            "temperature": 0.0,
+            "repetition_penalty": 1.0,
+            "max_tokens": request_func_input.output_len,
+            "logprobs": request_func_input.logprobs,
+            "stream": True,
+            "stream_options": {
+                "include_usage": True,
+            },
+        }
     if request_func_input.ignore_eos:
         payload["ignore_eos"] = request_func_input.ignore_eos
     if request_func_input.extra_body:
@@ -215,7 +236,8 @@ async def async_request_openai_completions(
             else:
                 output.error = response.reason or ""
                 output.success = False
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error:{e}", exc_info=True)
         output.success = False
         exc_info = sys.exc_info()
         output.error = "".join(traceback.format_exception(*exc_info))
